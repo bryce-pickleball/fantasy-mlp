@@ -1,10 +1,12 @@
 import type { Player } from "../types";
+import { PLAYERS_WITH_PHOTOS } from "./photos";
 
 // 2026 MLP rosters. Names sourced from majorleaguepickleball.co + thedinksheet.com.
 // Each team rosters exactly 6 players per the 2026 format (3M + 3W typical, but some teams
 // vary; here we keep 3M + 3W per team to match the Magnificent Six lineup format).
 // Salaries are made-up tiers for the demo (star $13-15k, mid $9-12k, role $6-9k).
-// imageUrl is null until you wire a licensed feed — fallback is initials avatar.
+// imageUrl resolves to /players/<slug>.jpg if a photo for that player name was extracted
+// from the PPA Tour Dropbox. Falls back to the initials avatar otherwise.
 //
 // If a name is wrong or a player has been traded, edit here and re-seed.
 
@@ -14,6 +16,19 @@ const salary = (t: Tier, jitter = 0): number => {
   return base + jitter;
 };
 const rating = (t: Tier): number => (t === "star" ? 93 : t === "mid" ? 84 : 76);
+
+function nameSlug(name: string): string {
+  return name
+    .replace(/['"]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function imageFor(name: string): string | null {
+  const slug = nameSlug(name);
+  return PLAYERS_WITH_PHOTOS.has(slug) ? `/players/${slug}.jpg` : null;
+}
 
 let serial = 0;
 const mk = (teamId: string, name: string, gender: "M" | "W", tier: Tier, jitter = 0): Player => {
@@ -25,7 +40,7 @@ const mk = (teamId: string, name: string, gender: "M" | "W", tier: Tier, jitter 
     teamId,
     salary: salary(tier, jitter),
     rating: rating(tier),
-    imageUrl: null,
+    imageUrl: imageFor(name),
   };
 };
 
@@ -33,7 +48,7 @@ export const players: Player[] = [
   // Atlanta Bouncers
   mk("atl", "Jaume Martinez Vich", "M", "mid",  500),
   mk("atl", "Jay Devilliers",       "M", "mid", -200),
-  mk("atl", "Andre Daescu",         "M", "role", 300),
+  mk("atl", "Andrei Daescu",        "M", "role", 300),
   mk("atl", "Kaitlyn Christian",    "W", "mid",  300),
   mk("atl", "Brooke Buckner",       "W", "role", 200),
   mk("atl", "Allyce Jones",         "W", "role", 100),

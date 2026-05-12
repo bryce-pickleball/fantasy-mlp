@@ -6,14 +6,12 @@ import { events } from "../lib/data/events";
 const prisma = new PrismaClient();
 
 async function main() {
-  // demo user (no auth yet — everyone is "you")
+  // ---- users ----------------------------------------------------------------
   await prisma.user.upsert({
     where: { id: "you" },
     update: {},
     create: { id: "you", name: "You", email: "you@fantasy-mlp.local" },
   });
-
-  // a few friend users for the league demo
   const friends = [
     { id: "u_pete", name: "Pickle Pete" },
     { id: "u_punch", name: "Drink the Punch" },
@@ -25,34 +23,65 @@ async function main() {
     await prisma.user.upsert({ where: { id: f.id }, update: {}, create: f });
   }
 
-  // teams
+  // ---- teams ---------------------------------------------------------------
+  const teamIds = new Set(teams.map((t) => t.id));
+  // remove stale teams (and their players via cascade — Player.teamId is required
+  // so we delete players on stale teams first to avoid FK errors)
+  const staleTeams = await prisma.team.findMany({ where: { id: { notIn: [...teamIds] } } });
+  if (staleTeams.length) {
+    const staleTeamIds = staleTeams.map((t) => t.id);
+    await prisma.lineupPlayer.deleteMany({ where: { player: { teamId: { in: staleTeamIds } } } });
+    await prisma.player.deleteMany({ where: { teamId: { in: staleTeamIds } } });
+    await prisma.team.deleteMany({ where: { id: { in: staleTeamIds } } });
+    console.log(`Removed ${staleTeams.length} stale team(s) and their players.`);
+  }
   for (const t of teams) {
     await prisma.team.upsert({ where: { id: t.id }, update: t, create: t });
   }
 
-  // players
-  for (const p of players) {
-    await prisma.player.upsert({ where: { id: p.id }, update: p, create: p });
+  // ---- players -------------------------------------------------------------
+  const playerIds = new Set(players.map((p) => p.id));
+  const stalePlayers = await prisma.player.findMany({ where: { id: { notIn: [...playerIds] } } });
+  if (stalePlayers.length) {
+    const stalePlayerIds = stalePlayers.map((p) => p.id);
+    await prisma.lineupPlayer.deleteMany({ where: { playerId: { in: stalePlayerIds } } });
+    await prisma.player.deleteMany({ where: { id: { in: stalePlayerIds } } });
+    console.log(`Removed ${stalePlayers.length} stale player(s).`);
   }
-
-  // events
-  for (const e of events) {
-    await prisma.event.upsert({
-      where: { id: e.id },
-      update: { ...e, startsAt: new Date(e.startsAt), locksAt: new Date(e.locksAt), teamIds: e.teamIds.join(",") },
-      create: { ...e, startsAt: new Date(e.startsAt), locksAt: new Date(e.locksAt), teamIds: e.teamIds.join(",") },
+  for (const p of players) {
+    await prisma.player.upsert({
+      where: { id: p.id },
+      update: { name: p.name, gender: p.gender, salary: p.salary, rating: p.rating, imageUrl: p.imageUrl ?? null, teamId: p.teamId },
+      create: { id: p.id, name: p.name, gender: p.gender, salary: p.salary, rating: p.rating, imageUrl: p.imageUrl ?? null, teamId: p.teamId },
     });
   }
 
-  // a starter league with all friends in it
+  // ---- events --------------------------------------------------------------
+  const eventTeamIds = teams.map((t) => t.id);
+  for (const e of events) {
+    await prisma.event.upsert({
+      where: { id: e.id },
+      update: {
+        name: e.name,
+        startsAt: new Date(e.startsAt),
+        locksAt: new Date(e.locksAt),
+        teamIds: eventTeamIds.join(","),
+      },
+      create: {
+        id: e.id,
+        name: e.name,
+        startsAt: new Date(e.startsAt),
+        locksAt: new Date(e.locksAt),
+        teamIds: eventTeamIds.join(","),
+      },
+    });
+  }
+
+  // ---- demo league ---------------------------------------------------------
   const league = await prisma.league.upsert({
     where: { id: "lg_pickle_pals" },
     update: {},
-    create: {
-      id: "lg_pickle_pals",
-      name: "The Pickle Pals",
-      commissionerId: "you",
-    },
+    create: { id: "lg_pickle_pals", name: "The Pickle Pals", commissionerId: "you" },
   });
   const allMembers = ["you", ...friends.map((f) => f.id)];
   for (const userId of allMembers) {
@@ -62,8 +91,6 @@ async function main() {
       create: { leagueId: league.id, userId, role: userId === "you" ? "commissioner" : "member" },
     });
   }
-
-  // sample trash talk
   const existing = await prisma.leagueMessage.count({ where: { leagueId: league.id } });
   if (existing === 0) {
     await prisma.leagueMessage.createMany({
@@ -75,7 +102,7 @@ async function main() {
     });
   }
 
-  console.log("Seed complete.");
+  console.log(`Seed complete. ${teams.length} teams, ${players.length} players.`);
 }
 
 main().finally(() => prisma.$disconnect());

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Player, Team } from "@/lib/types";
 import { LINEUP_MEN, LINEUP_WOMEN, SALARY_CAP } from "@/lib/types";
 import { validateLineup } from "@/lib/scoring";
+import Avatar from "./Avatar";
 
 type Props = {
   eventId: string;
@@ -17,21 +18,33 @@ type Filter = "ALL" | "M" | "W";
 
 export default function LineupBuilder({ eventId, players, teams, existingPlayerIds }: Props) {
   const router = useRouter();
-  const [picked, setPicked] = useState<Set<string>>(new Set(existingPlayerIds));
+  const [picked, setPicked] = useState<string[]>(existingPlayerIds);
   const [filter, setFilter] = useState<Filter>("ALL");
   const [teamFilter, setTeamFilter] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [serverMsg, setServerMsg] = useState<string | null>(null);
 
+  const playerById = useMemo(() => Object.fromEntries(players.map((p) => [p.id, p])), [players]);
   const teamById = useMemo(() => Object.fromEntries(teams.map((t) => [t.id, t])), [teams]);
 
-  const totals = useMemo(() => {
-    const ids = [...picked];
-    const r = validateLineup(players, ids, SALARY_CAP);
-    const men = players.filter((p) => picked.has(p.id) && p.gender === "M").length;
-    const women = players.filter((p) => picked.has(p.id) && p.gender === "W").length;
-    return { ...r, men, women, ids };
-  }, [picked, players]);
+  const pickedSet = useMemo(() => new Set(picked), [picked]);
+  const pickedPlayers = useMemo(
+    () => picked.map((id) => playerById[id]).filter(Boolean) as Player[],
+    [picked, playerById],
+  );
+  const men = pickedPlayers.filter((p) => p.gender === "M");
+  const women = pickedPlayers.filter((p) => p.gender === "W");
+  const totalSalary = pickedPlayers.reduce((s, p) => s + p.salary, 0);
+
+  const v = useMemo(() => validateLineup(players, picked, SALARY_CAP), [players, picked]);
+
+  // Build 6 ordered slots: 3 men then 3 women.
+  const slots: { gender: "M" | "W"; index: number; player: Player | null }[] = useMemo(() => {
+    const out: { gender: "M" | "W"; index: number; player: Player | null }[] = [];
+    for (let i = 0; i < LINEUP_MEN; i++) out.push({ gender: "M", index: i, player: men[i] ?? null });
+    for (let i = 0; i < LINEUP_WOMEN; i++) out.push({ gender: "W", index: i, player: women[i] ?? null });
+    return out;
+  }, [men, women]);
 
   const filtered = useMemo(() => {
     return players
@@ -40,24 +53,25 @@ export default function LineupBuilder({ eventId, players, teams, existingPlayerI
       .sort((a, b) => b.salary - a.salary);
   }, [players, filter, teamFilter]);
 
-  const toggle = (p: Player) => {
+  function add(p: Player) {
     setServerMsg(null);
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(p.id)) {
-        next.delete(p.id);
-        return next;
-      }
-      const sameGender = [...next].filter((id) => players.find((x) => x.id === id)?.gender === p.gender).length;
-      const limit = p.gender === "M" ? LINEUP_MEN : LINEUP_WOMEN;
-      if (sameGender >= limit) {
-        setServerMsg(`You already have ${limit} ${p.gender === "M" ? "men" : "women"}. Drop one first.`);
-        return prev;
-      }
-      next.add(p.id);
-      return next;
-    });
-  };
+    const sameGenderCount = p.gender === "M" ? men.length : women.length;
+    const limit = p.gender === "M" ? LINEUP_MEN : LINEUP_WOMEN;
+    if (sameGenderCount >= limit) {
+      setServerMsg(`Already at ${limit} ${p.gender === "M" ? "men" : "women"}. Drop one first.`);
+      return;
+    }
+    setPicked((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
+  }
+
+  function remove(playerId: string) {
+    setServerMsg(null);
+    setPicked((prev) => prev.filter((id) => id !== playerId));
+  }
+
+  function toggle(p: Player) {
+    pickedSet.has(p.id) ? remove(p.id) : add(p);
+  }
 
   async function submit() {
     setSubmitting(true);
@@ -66,7 +80,7 @@ export default function LineupBuilder({ eventId, players, teams, existingPlayerI
       const res = await fetch("/api/lineup", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ eventId, playerIds: totals.ids }),
+        body: JSON.stringify({ eventId, playerIds: picked }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -80,15 +94,34 @@ export default function LineupBuilder({ eventId, players, teams, existingPlayerI
     }
   }
 
-  const capRatio = Math.min(1, totals.total / SALARY_CAP);
-  const overCap = totals.total > SALARY_CAP;
-  const remaining = SALARY_CAP - totals.total;
+  // ---- status messaging ----------------------------------------------------
+  const overCap = totalSalary > SALARY_CAP;
+  const capLeft = SALARY_CAP - totalSalary;
+  const capRatio = Math.min(1, totalSalary / SALARY_CAP);
+
+  const needMen = Math.max(0, LINEUP_MEN - men.length);
+  const needWomen = Math.max(0, LINEUP_WOMEN - women.length);
+
+  // ONE actionable status message, in priority order.
+  let status: { tone: "ok" | "warn" | "err"; text: string };
+  if (overCap) {
+    status = { tone: "err", text: `Over cap by $${(totalSalary - SALARY_CAP).toLocaleString()} — drop someone.` };
+  } else if (needMen > 0 && needWomen > 0) {
+    status = { tone: "warn", text: `Need ${needMen} more ${needMen === 1 ? "man" : "men"} and ${needWomen} more ${needWomen === 1 ? "woman" : "women"}.` };
+  } else if (needMen > 0) {
+    status = { tone: "warn", text: `Need ${needMen} more ${needMen === 1 ? "man" : "men"}.` };
+  } else if (needWomen > 0) {
+    status = { tone: "warn", text: `Need ${needWomen} more ${needWomen === 1 ? "woman" : "women"}.` };
+  } else {
+    status = { tone: "ok", text: `Ready. $${capLeft.toLocaleString()} under cap.` };
+  }
 
   return (
     <div className="grid lg:grid-cols-[1fr_360px] gap-6">
+      {/* ───────────────── PLAYER POOL ───────────────── */}
       <section className="panel p-4">
-        <header className="flex items-center justify-between mb-4">
-          <h2 className="font-display text-xl font-semibold">Player pool</h2>
+        <header className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+          <h2 className="font-display text-xl font-semibold">Player pool <span className="text-ink/40 num font-mono text-sm">({filtered.length})</span></h2>
           <div className="flex items-center gap-2 text-sm">
             {(["ALL", "M", "W"] as Filter[]).map((f) => (
               <button
@@ -113,78 +146,109 @@ export default function LineupBuilder({ eventId, players, teams, existingPlayerI
         </header>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {filtered.map((p) => {
-            const sel = picked.has(p.id);
+            const sel = pickedSet.has(p.id);
             return (
               <button
                 key={p.id}
                 onClick={() => toggle(p)}
-                className={`flex items-center justify-between text-left p-3 rounded border transition ${
+                className={`flex items-center gap-3 text-left p-2.5 rounded border transition ${
                   sel ? "bg-court text-paper border-court" : "bg-white border-line hover:border-ink/30"
                 }`}
               >
-                <span>
-                  <span className="block font-semibold">{p.name}</span>
+                <Avatar name={p.name} imageUrl={p.imageUrl} size={36} gender={p.gender} />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold truncate">{p.name}</span>
                   <span className={`text-xs ${sel ? "text-paper/80" : "text-ink/60"}`}>
                     {teamById[p.teamId]?.abbr} · {p.gender} · rtg <span className="num">{p.rating}</span>
                   </span>
                 </span>
-                <span className="num font-mono font-semibold">${p.salary.toLocaleString()}</span>
+                <span className="num font-mono font-semibold whitespace-nowrap">${p.salary.toLocaleString()}</span>
               </button>
             );
           })}
         </div>
       </section>
 
+      {/* ───────────────── YOUR LINEUP ───────────────── */}
       <aside className="space-y-4">
         <div className="panel p-4">
           <h2 className="font-display text-xl font-semibold mb-3">Your lineup</h2>
+
+          {/* salary meter */}
           <div className="flex items-center justify-between text-xs text-ink/60 mb-1 num">
-            <span>${totals.total.toLocaleString()} / ${SALARY_CAP.toLocaleString()}</span>
-            <span>{overCap ? `Over by $${(totals.total - SALARY_CAP).toLocaleString()}` : `$${remaining.toLocaleString()} left`}</span>
+            <span>${totalSalary.toLocaleString()} / ${SALARY_CAP.toLocaleString()}</span>
+            <span>{overCap ? `Over by $${(totalSalary - SALARY_CAP).toLocaleString()}` : `$${capLeft.toLocaleString()} left`}</span>
           </div>
           <div className={`meter ${overCap ? "over" : ""}`}>
             <span style={{ width: `${capRatio * 100}%` }} />
           </div>
 
-          <div className="flex justify-between mt-4 mb-1 text-xs text-ink/60">
-            <span>Men <span className="num">{totals.men}/{LINEUP_MEN}</span></span>
-            <span>Women <span className="num">{totals.women}/{LINEUP_WOMEN}</span></span>
+          {/* gender counters as bigger affordances */}
+          <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+            <div className={`rounded border px-2 py-1.5 flex items-center justify-between ${needMen > 0 ? "border-accent/40 bg-accent/5 text-accent" : "border-court/40 bg-court/5 text-court"}`}>
+              <span className="font-display font-semibold">Men</span>
+              <span className="num font-mono">{men.length} / {LINEUP_MEN}</span>
+            </div>
+            <div className={`rounded border px-2 py-1.5 flex items-center justify-between ${needWomen > 0 ? "border-accent/40 bg-accent/5 text-accent" : "border-court/40 bg-court/5 text-court"}`}>
+              <span className="font-display font-semibold">Women</span>
+              <span className="num font-mono">{women.length} / {LINEUP_WOMEN}</span>
+            </div>
           </div>
 
-          <ul className="mt-2 divide-y divide-line text-sm">
-            {totals.ids.length === 0 && (
-              <li className="py-3 text-ink/50 font-serif italic">No picks yet. Tap a player.</li>
-            )}
-            {totals.ids.map((id) => {
-              const p = players.find((x) => x.id === id)!;
+          {/* slot list — placeholders make the missing picks obvious */}
+          <ul className="mt-3 space-y-1.5">
+            {slots.map((slot, i) => {
+              const p = slot.player;
+              const role = slot.gender === "M" ? "Man" : "Woman";
+              const slotKey = `${slot.gender}${slot.index}`;
+              if (!p) {
+                return (
+                  <li
+                    key={slotKey}
+                    className="flex items-center gap-2 p-2 rounded border border-dashed border-line bg-paper/40"
+                  >
+                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-line/60 text-ink/40 font-display">+</span>
+                    <span className="flex-1 text-sm text-ink/50 font-serif italic">
+                      Pick {role.toLowerCase()} #{slot.index + 1}
+                    </span>
+                    <span className="text-xs text-ink/30 num font-mono w-6 text-right">{i + 1}</span>
+                  </li>
+                );
+              }
               return (
-                <li key={id} className="py-2 flex items-center justify-between">
-                  <span>
-                    <span className="font-semibold">{p.name}</span>
-                    <span className="text-ink/50 text-xs"> · {teamById[p.teamId]?.abbr} · {p.gender}</span>
+                <li
+                  key={slotKey}
+                  className="flex items-center gap-2 p-2 rounded border border-line bg-white"
+                >
+                  <Avatar name={p.name} imageUrl={p.imageUrl} size={36} gender={p.gender} />
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-semibold truncate">{p.name}</span>
+                    <span className="text-xs text-ink/50">
+                      {teamById[p.teamId]?.abbr} · {p.gender}
+                    </span>
                   </span>
-                  <span className="flex items-center gap-2">
-                    <span className="num font-mono">${p.salary.toLocaleString()}</span>
-                    <button onClick={() => toggle(p)} className="text-ink/50 hover:text-accent" aria-label="remove">✕</button>
-                  </span>
+                  <span className="num font-mono text-sm">${p.salary.toLocaleString()}</span>
+                  <button onClick={() => remove(p.id)} className="text-ink/40 hover:text-accent px-1" aria-label={`Remove ${p.name}`}>✕</button>
                 </li>
               );
             })}
           </ul>
 
+          {/* status line + submit */}
+          <div className={`mt-4 text-sm font-display font-semibold ${
+            status.tone === "ok" ? "text-court" : status.tone === "err" ? "text-accent" : "text-ink/70"
+          }`}>
+            {status.text}
+          </div>
+
           <button
             onClick={submit}
-            disabled={!totals.ok || submitting}
-            className="mt-4 w-full py-2 rounded font-display font-semibold bg-ink text-paper disabled:bg-line disabled:text-ink/40"
+            disabled={!v.ok || submitting}
+            className="mt-2 w-full py-2 rounded font-display font-semibold bg-ink text-paper disabled:bg-line disabled:text-ink/40"
           >
-            {submitting ? "Submitting…" : totals.ok ? "Submit lineup" : "Fill out your lineup"}
+            {submitting ? "Submitting…" : v.ok ? "Submit lineup" : "Fix the highlighted issues"}
           </button>
 
-          {!totals.ok && totals.errors.length > 0 && (
-            <ul className="mt-3 text-xs text-accent space-y-1">
-              {totals.errors.map((e) => <li key={e}>· {e}</li>)}
-            </ul>
-          )}
           {serverMsg && <p className="mt-3 text-sm font-serif italic">{serverMsg}</p>}
         </div>
 

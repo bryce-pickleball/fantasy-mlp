@@ -12,8 +12,8 @@ function rowToEvent(e: { id: string; name: string; startsAt: Date; locksAt: Date
   };
 }
 
-function rowToPlayer(p: { id: string; name: string; gender: string; salary: number; rating: number; teamId: string }): Player {
-  return { id: p.id, name: p.name, gender: p.gender as "M" | "W", salary: p.salary, rating: p.rating, teamId: p.teamId };
+function rowToPlayer(p: { id: string; name: string; gender: string; salary: number; rating: number; teamId: string; imageUrl: string | null }): Player {
+  return { id: p.id, name: p.name, gender: p.gender as "M" | "W", salary: p.salary, rating: p.rating, teamId: p.teamId, imageUrl: p.imageUrl };
 }
 
 function fakeScore(playerId: string, ownerId: string): number {

@@ -13,6 +13,7 @@ export interface Player {
   teamId: string;
   salary: number;
   rating: number;
+  imageUrl?: string | null;
 }
 
 export interface Event {

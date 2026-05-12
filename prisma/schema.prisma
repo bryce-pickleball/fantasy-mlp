@@ -37,6 +37,7 @@ model Player {
   gender   String  // "M" | "W"
   salary   Int
   rating   Int
+  imageUrl String?
   teamId   String
   team     Team    @relation(fields: [teamId], references: [id])
   lineupPicks LineupPlayer[]

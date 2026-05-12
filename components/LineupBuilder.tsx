@@ -12,11 +12,13 @@ type Props = {
   players: Player[];
   teams: Team[];
   existingPlayerIds: string[];
+  locksAt: string;
 };
 
 type Filter = "ALL" | "M" | "W";
 
-export default function LineupBuilder({ eventId, players, teams, existingPlayerIds }: Props) {
+export default function LineupBuilder({ eventId, players, teams, existingPlayerIds, locksAt }: Props) {
+  const isLocked = new Date(locksAt) <= new Date();
   const router = useRouter();
   const [picked, setPicked] = useState<string[]>(existingPlayerIds);
   const [filter, setFilter] = useState<Filter>("ALL");
@@ -54,6 +56,7 @@ export default function LineupBuilder({ eventId, players, teams, existingPlayerI
   }, [players, filter, teamFilter]);
 
   function add(p: Player) {
+    if (isLocked) return;
     setServerMsg(null);
     const sameGenderCount = p.gender === "M" ? men.length : women.length;
     const limit = p.gender === "M" ? LINEUP_MEN : LINEUP_WOMEN;
@@ -65,11 +68,13 @@ export default function LineupBuilder({ eventId, players, teams, existingPlayerI
   }
 
   function remove(playerId: string) {
+    if (isLocked) return;
     setServerMsg(null);
     setPicked((prev) => prev.filter((id) => id !== playerId));
   }
 
   function toggle(p: Player) {
+    if (isLocked) return;
     pickedSet.has(p.id) ? remove(p.id) : add(p);
   }
 
@@ -104,7 +109,9 @@ export default function LineupBuilder({ eventId, players, teams, existingPlayerI
 
   // ONE actionable status message, in priority order.
   let status: { tone: "ok" | "warn" | "err"; text: string };
-  if (overCap) {
+  if (isLocked) {
+    status = { tone: "err", text: `Lineups locked. First serve already happened.` };
+  } else if (overCap) {
     status = { tone: "err", text: `Over cap by $${(totalSalary - SALARY_CAP).toLocaleString()} — drop someone.` };
   } else if (needMen > 0 && needWomen > 0) {
     status = { tone: "warn", text: `Need ${needMen} more ${needMen === 1 ? "man" : "men"} and ${needWomen} more ${needWomen === 1 ? "woman" : "women"}.` };
@@ -243,10 +250,10 @@ export default function LineupBuilder({ eventId, players, teams, existingPlayerI
 
           <button
             onClick={submit}
-            disabled={!v.ok || submitting}
+            disabled={!v.ok || submitting || isLocked}
             className="mt-2 w-full py-2 rounded font-display font-semibold bg-ink text-paper disabled:bg-line disabled:text-ink/40"
           >
-            {submitting ? "Submitting…" : v.ok ? "Submit lineup" : "Fix the highlighted issues"}
+            {isLocked ? "Locked" : submitting ? "Submitting…" : v.ok ? "Submit lineup" : "Fix the highlighted issues"}
           </button>
 
           {serverMsg && <p className="mt-3 text-sm font-serif italic">{serverMsg}</p>}

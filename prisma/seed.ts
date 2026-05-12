@@ -57,6 +57,16 @@ async function main() {
   }
 
   // ---- events --------------------------------------------------------------
+  const eventIds = new Set(events.map((e) => e.id));
+  // Remove stale events (old demo events from earlier deploys)
+  const staleEvents = await prisma.event.findMany({ where: { id: { notIn: [...eventIds] } } });
+  if (staleEvents.length) {
+    const staleEventIds = staleEvents.map((e) => e.id);
+    await prisma.lineupPlayer.deleteMany({ where: { lineup: { eventId: { in: staleEventIds } } } });
+    await prisma.lineup.deleteMany({ where: { eventId: { in: staleEventIds } } });
+    await prisma.event.deleteMany({ where: { id: { in: staleEventIds } } });
+    console.log(`Removed ${staleEvents.length} stale event(s) and their lineups.`);
+  }
   const eventTeamIds = teams.map((t) => t.id);
   for (const e of events) {
     await prisma.event.upsert({

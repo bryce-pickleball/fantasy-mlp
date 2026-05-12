@@ -19,7 +19,9 @@ export default async function LeagueDetailPage({ params }: { params: { id: strin
 
   const myMembership = league.members.find((m) => m.userId === me.id);
   const events = await prisma.event.findMany({ orderBy: { startsAt: "asc" } });
-  const focusEvent = events[0];
+  // Focus the next non-locked event; fall back to the most recent if season's done.
+  const now = Date.now();
+  const focusEvent = events.find((e) => e.locksAt.getTime() > now) ?? events.at(-1);
 
   const memberIds = new Set(league.members.map((m) => m.userId));
   const board = focusEvent ? (await data.getLeaderboard(focusEvent.id)).filter((s) => memberIds.has(s.ownerId)) : [];

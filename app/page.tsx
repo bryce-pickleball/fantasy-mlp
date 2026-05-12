@@ -4,7 +4,10 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/currentUser";
 
 export default async function Home() {
-  const events = await data.getEvents();
+  const allEvents = await data.getEvents();
+  const now = Date.now();
+  const upcoming = allEvents.filter((e) => new Date(e.locksAt).getTime() > now);
+  const nextEvent = upcoming[0];
   const me = await getCurrentUser();
   const myLeagues = await prisma.leagueMember.findMany({
     where: { userId: me.id },
@@ -25,24 +28,47 @@ export default async function Home() {
 
       <div className="grid md:grid-cols-2 gap-10">
         <section>
-          <h2 className="font-display text-2xl font-semibold mb-4">Upcoming events</h2>
-          <div className="grid gap-3">
-            {events.map((e) => (
-              <Link
-                key={e.id}
-                href={`/lineup/${e.id}`}
-                className="panel p-5 flex items-center justify-between hover:border-ink/30 transition"
-              >
-                <div>
-                  <div className="font-display text-xl font-semibold">{e.name}</div>
-                  <div className="text-sm text-ink/60 num">
-                    Locks {new Date(e.locksAt).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}
-                  </div>
+          <h2 className="font-display text-2xl font-semibold mb-4">2026 season</h2>
+
+          {nextEvent && (
+            <Link
+              href={`/lineup/${nextEvent.id}`}
+              className="panel p-5 flex items-start justify-between hover:border-ink/30 transition mb-3 bg-court/5 border-court/30"
+            >
+              <div>
+                <div className="text-xs font-display font-semibold text-court uppercase tracking-wide mb-1">Next up</div>
+                <div className="font-display text-xl font-semibold">{nextEvent.name}</div>
+                <div className="text-sm text-ink/60 num">
+                  Locks {new Date(nextEvent.locksAt).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                 </div>
-                <span className="text-accent font-display font-semibold">Build lineup →</span>
-              </Link>
-            ))}
-          </div>
+              </div>
+              <span className="text-accent font-display font-semibold whitespace-nowrap">Build lineup →</span>
+            </Link>
+          )}
+
+          <ul className="panel divide-y divide-line text-sm">
+            {allEvents.map((e) => {
+              const locked = new Date(e.locksAt).getTime() <= now;
+              const isNext = nextEvent && e.id === nextEvent.id;
+              return (
+                <li key={e.id}>
+                  <Link
+                    href={`/lineup/${e.id}`}
+                    className={`block px-4 py-3 hover:bg-line/30 flex items-center justify-between gap-3 ${locked ? "opacity-50" : ""}`}
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="font-semibold truncate">{e.name}</span>
+                      {locked && <span className="text-xs font-display text-accent">· locked</span>}
+                      {isNext && <span className="text-xs font-display text-court">· next</span>}
+                    </span>
+                    <span className="num font-mono text-xs text-ink/60 whitespace-nowrap">
+                      {new Date(e.startsAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         </section>
 
         <section>

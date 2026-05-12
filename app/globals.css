@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-ink: #0b0d10;
+  --color-paper: #f7f5f0;
+  --color-line: #e6e2d8;
+  --color-court: #2f6b3f;
+  --color-accent: #d44a2a;
+}
+
+html, body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-feature-settings: "ss01", "ss02";
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  box-shadow: 0 1px 0 rgba(11, 13, 16, 0.04);
+}
+
+.meter {
+  position: relative;
+  height: 8px;
+  background: var(--color-line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.meter > span {
+  display: block;
+  height: 100%;
+  background: var(--color-court);
+  transition: width 200ms ease, background-color 200ms ease;
+}
+
+.meter.over > span {
+  background: var(--color-accent);
+}
+
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  margin-right: 6px;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}

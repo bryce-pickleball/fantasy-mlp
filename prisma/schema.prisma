@@ -1,0 +1,118 @@
+// Fantasy MLP — Prisma schema
+// Demo runs on SQLite. To switch to Postgres for prod:
+//   1) change provider to "postgresql"
+//   2) set DATABASE_URL to a postgres:// URL
+//   3) re-run `npx prisma migrate dev`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String           @id @default(cuid())
+  name            String
+  email           String?          @unique
+  createdAt       DateTime         @default(now())
+  lineups         Lineup[]
+  leaguesAsCommish League[]        @relation("CommissionerLeagues")
+  memberships     LeagueMember[]
+  messages        LeagueMessage[]
+}
+
+model Team {
+  id      String   @id
+  name    String
+  abbr    String
+  players Player[]
+}
+
+model Player {
+  id       String  @id
+  name     String
+  gender   String  // "M" | "W"
+  salary   Int
+  rating   Int
+  teamId   String
+  team     Team    @relation(fields: [teamId], references: [id])
+  lineupPicks LineupPlayer[]
+}
+
+model Event {
+  id        String   @id
+  name      String
+  startsAt  DateTime
+  locksAt   DateTime
+  teamIds   String   // comma-separated team ids (denormalized for demo)
+  lineups   Lineup[]
+}
+
+model Lineup {
+  id          String   @id @default(cuid())
+  eventId     String
+  ownerId     String
+  submittedAt DateTime @default(now())
+  event       Event    @relation(fields: [eventId], references: [id])
+  owner       User     @relation(fields: [ownerId], references: [id])
+  picks       LineupPlayer[]
+
+  @@unique([eventId, ownerId])
+}
+
+model LineupPlayer {
+  lineupId String
+  playerId String
+  slot     Int     // 0..5
+  lineup   Lineup  @relation(fields: [lineupId], references: [id], onDelete: Cascade)
+  player   Player  @relation(fields: [playerId], references: [id])
+
+  @@id([lineupId, playerId])
+}
+
+model League {
+  id              String          @id @default(cuid())
+  name            String
+  format          String          @default("standard")
+  commissionerId  String
+  createdAt       DateTime        @default(now())
+  commissioner    User            @relation("CommissionerLeagues", fields: [commissionerId], references: [id])
+  members         LeagueMember[]
+  invites         LeagueInvite[]
+  messages        LeagueMessage[]
+}
+
+model LeagueMember {
+  leagueId String
+  userId   String
+  role     String   @default("member") // "commissioner" | "member"
+  joinedAt DateTime @default(now())
+  league   League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@id([leagueId, userId])
+}
+
+model LeagueInvite {
+  token     String   @id
+  leagueId  String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+  league    League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+}
+
+model LeagueMessage {
+  id        String   @id @default(cuid())
+  leagueId  String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  league    League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id])
+
+  @@index([leagueId, createdAt])
+}

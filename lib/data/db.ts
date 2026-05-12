@@ -24,7 +24,7 @@ function fakeScore(playerId: string, ownerId: string): number {
 export const dbAdapter: DataAdapter = {
   async getTeams() {
     const ts = await prisma.team.findMany({ orderBy: { name: "asc" } });
-    return ts.map((t) => ({ id: t.id, name: t.name, abbr: t.abbr })) as Team[];
+    return ts.map((t) => ({ id: t.id, name: t.name, abbr: t.abbr, logoUrl: t.logoUrl })) as Team[];
   },
   async getPlayers() {
     const ps = await prisma.player.findMany();

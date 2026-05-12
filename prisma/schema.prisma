@@ -25,10 +25,11 @@ model User {
 }
 
 model Team {
-  id      String   @id
-  name    String
-  abbr    String
-  players Player[]
+  id       String   @id
+  name     String
+  abbr     String
+  logoUrl  String?
+  players  Player[]
 }
 
 model Player {

@@ -4,6 +4,7 @@ export interface Team {
   id: string;
   name: string;
   abbr: string;
+  logoUrl?: string | null;
 }
 
 export interface Player {

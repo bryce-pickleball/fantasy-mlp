@@ -6,6 +6,7 @@ import type { Player, Team } from "@/lib/types";
 import { LINEUP_MEN, LINEUP_WOMEN, SALARY_CAP } from "@/lib/types";
 import { validateLineup } from "@/lib/scoring";
 import Avatar from "./Avatar";
+import TeamLogo from "./TeamLogo";
 
 type Props = {
   eventId: string;
@@ -165,8 +166,9 @@ export default function LineupBuilder({ eventId, players, teams, existingPlayerI
                 <Avatar name={p.name} imageUrl={p.imageUrl} size={36} gender={p.gender} />
                 <span className="min-w-0 flex-1">
                   <span className="block font-semibold truncate">{p.name}</span>
-                  <span className={`text-xs ${sel ? "text-paper/80" : "text-ink/60"}`}>
-                    {teamById[p.teamId]?.abbr} · {p.gender} · rtg <span className="num">{p.rating}</span>
+                  <span className={`text-xs flex items-center gap-1.5 ${sel ? "text-paper/80" : "text-ink/60"}`}>
+                    <TeamLogo abbr={teamById[p.teamId]?.abbr ?? ""} logoUrl={teamById[p.teamId]?.logoUrl} size={16} />
+                    <span>{teamById[p.teamId]?.abbr} · {p.gender} · rtg <span className="num">{p.rating}</span></span>
                   </span>
                 </span>
                 <span className="num font-mono font-semibold whitespace-nowrap">${p.salary.toLocaleString()}</span>
@@ -230,8 +232,9 @@ export default function LineupBuilder({ eventId, players, teams, existingPlayerI
                   <Avatar name={p.name} imageUrl={p.imageUrl} size={36} gender={p.gender} />
                   <span className="flex-1 min-w-0">
                     <span className="block font-semibold truncate">{p.name}</span>
-                    <span className="text-xs text-ink/50">
-                      {teamById[p.teamId]?.abbr} · {p.gender}
+                    <span className="text-xs text-ink/50 flex items-center gap-1.5">
+                      <TeamLogo abbr={teamById[p.teamId]?.abbr ?? ""} logoUrl={teamById[p.teamId]?.logoUrl} size={14} />
+                      <span>{teamById[p.teamId]?.abbr} · {p.gender}</span>
                     </span>
                   </span>
                   <span className="num font-mono text-sm">${p.salary.toLocaleString()}</span>

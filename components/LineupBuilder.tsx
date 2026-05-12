@@ -209,7 +209,7 @@ export default function LineupBuilder({ eventId, players, teams, existingPlayerI
                   >
                     <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-line/60 text-ink/40 font-display">+</span>
                     <span className="flex-1 text-sm text-ink/50 font-serif italic">
-                      Pick {role.toLowerCase()} #{slot.index + 1}
+                      Pick a {role.toLowerCase()} <span className="num font-mono not-italic text-ink/30">#{slot.index + 1}</span>
                     </span>
                     <span className="text-xs text-ink/30 num font-mono w-6 text-right">{i + 1}</span>
                   </li>
